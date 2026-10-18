@@ -149,28 +149,36 @@ docker run --rm --gpus all --shm-size=2g -u $(id -u):$(id -g) -e HOME=/tmp \
 ### Ablation on Imagenette
 
 `tools/ablation.py` retrains the paper's cumulative ablation (Table 3, 0.5x) from scratch on
-Imagenette `train` (9,469 images, 10 classes) and evaluates on `val`. Recipe from
-`tools/train.py`: 50 epochs, batch 128, lr 0.05 (0.8 scaled to batch 128), cosine with
-5 warmup epochs, label smoothing 0.1, weight decay 3e-5, bf16 autocast. Single seed.
+Imagenette `train` (9,469 images, 10 classes) and evaluates on `val` (3,925 images). Recipe
+from `tools/train.py`: 100 epochs, batch 128, lr 0.05 (0.8 scaled to batch 128), cosine with
+5 warmup epochs, label smoothing 0.1, weight decay 3e-5, bf16 autocast. Three seeds per step;
+Δ is the change from the previous step, ± its standard error.
 
-| Step | Imagenette top-1 | Δ | Params (M) | Paper top-1 (ImageNet) | Paper Δ |
-|---|---|---|---|---|---|
-| BaseNet | 76.08 | | 0.22 | 55.58 | |
-| + H-Swish | 77.48 | +1.40 | 0.22 | 58.18 | +2.60 |
-| + 5x5 | 78.85 | +1.37 | 0.23 | 59.09 | +0.91 |
-| + SE | 78.42 | −0.43 | 0.27 | 59.91 | +0.82 |
-| + 1x1 conv | 78.68 | +0.26 | 0.61 | 62.50 | +2.59 |
-| + dropout | 78.24 | −0.44 | 0.61 | 63.14 | +0.64 |
+| Step | Top-1 (mean ± std) | Runs | Δ | Params (M) | Paper top-1 (ImageNet) | Paper Δ |
+|---|---|---|---|---|---|---|
+| BaseNet | 81.39 ± 0.43 | 81.10, 81.20, 81.89 | | 0.22 | 55.58 | |
+| + H-Swish | 83.66 ± 0.47 | 83.62, 84.15, 83.21 | **+2.27 ± 0.37** | 0.22 | 58.18 | +2.60 |
+| + 5x5 | 83.80 ± 0.29 | 83.46, 83.92, 84.00 | +0.14 ± 0.32 | 0.23 | 59.09 | +0.91 |
+| + SE | 83.55 ± 0.55 | 83.31, 84.18, 83.16 | −0.25 ± 0.36 | 0.27 | 59.91 | +0.82 |
+| + 1x1 conv | 83.87 ± 0.20 | 84.00, 83.64, 83.97 | +0.32 ± 0.34 | 0.61 | 62.50 | +2.59 |
+| + dropout | 84.48 ± 0.28 | 84.15, 84.66, 84.61 | +0.60 ± 0.20 | 0.61 | 63.14 | +0.64 |
 
-H-Swish and 5x5 kernels reproduce clearly. The last three steps are within the noise of a
-single run on 3,925 validation images (~±0.7%p). Two of them likely depend on the dataset:
-the 1280-d head mainly adds capacity for 1,000 classes, and dropout does not help a model
-that is still underfitting (train loss is still falling at epoch 50).
+- H-Swish reproduces clearly, with an effect close to the paper's (+2.3 vs +2.6).
+- Dropout gives a smaller gain (+0.6, t ≈ 3 with only 3 runs per step) of about the paper's size.
+- 5x5, SE and the 1x1 head conv are within noise here. The full model beats +H-Swish
+  by +0.82 ± 0.32, so the three tail techniques help together, but this setup cannot
+  separate them. With only 10 classes, the 1280-d head likely matters less than on ImageNet.
+- An earlier single-seed, 50-epoch run showed +1.37 for 5x5, which did not hold up here.
+  Single runs are not enough at this dataset size.
+
+CPU latency is not reported: at 0.5x, PyTorch eager overhead in a WSL container dominates
+(3.0–3.5 ms for every step), so it does not reproduce the paper's per-step latency costs.
 
 ```bash
 docker run --rm --gpus all --shm-size=4g -u $(id -u):$(id -g) -e HOME=/tmp \
     -v $PWD:/workspace -v ~/data/imagenette2:/data:ro \
-    pplcnet-torch python tools/ablation.py --root /data --epochs 50 --seeds 0
+    pplcnet-torch python tools/ablation.py --root /data --epochs 100 --seeds 0 1 2 \
+    --out-dir runs/ablation_e100
 ```
 
 ## Development (Docker)
