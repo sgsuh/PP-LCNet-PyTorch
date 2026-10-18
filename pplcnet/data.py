@@ -62,3 +62,30 @@ class ImagenetteEval(torch.utils.data.Dataset):
         path, label = self.samples[idx]
         with Image.open(path) as img:
             return torch.from_numpy(preprocess(img)), label
+
+
+class Imagenette(torch.utils.data.Dataset):
+    """Imagenette split with labels 0..9 (sorted WordNet IDs), for training from scratch.
+
+    `transform` maps a PIL image to a tensor. Corrupt files are not expected;
+    images are converted to RGB because a few Imagenette files are grayscale/CMYK.
+    """
+
+    classes = sorted(IMAGENETTE_TO_IMAGENET)
+
+    def __init__(self, root: str, split: str, transform):
+        self.transform = transform
+        self.samples: List[Tuple[str, int]] = []
+        split_dir = os.path.join(root, split)
+        for label, wnid in enumerate(self.classes):
+            class_dir = os.path.join(split_dir, wnid)
+            for name in sorted(os.listdir(class_dir)):
+                self.samples.append((os.path.join(class_dir, name), label))
+
+    def __len__(self) -> int:
+        return len(self.samples)
+
+    def __getitem__(self, idx: int):
+        path, label = self.samples[idx]
+        with Image.open(path) as img:
+            return self.transform(img.convert("RGB")), label

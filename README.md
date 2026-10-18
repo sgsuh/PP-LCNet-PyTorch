@@ -146,6 +146,33 @@ docker run --rm --gpus all --shm-size=2g -u $(id -u):$(id -g) -e HOME=/tmp \
     pplcnet-torch python tools/eval_imagenette.py --root /data --weights-dir /w
 ```
 
+### Ablation on Imagenette
+
+`tools/ablation.py` retrains the paper's cumulative ablation (Table 3, 0.5x) from scratch on
+Imagenette `train` (9,469 images, 10 classes) and evaluates on `val`. Recipe from
+`tools/train.py`: 50 epochs, batch 128, lr 0.05 (0.8 scaled to batch 128), cosine with
+5 warmup epochs, label smoothing 0.1, weight decay 3e-5, bf16 autocast. Single seed.
+
+| Step | Imagenette top-1 | Δ | Params (M) | Paper top-1 (ImageNet) | Paper Δ |
+|---|---|---|---|---|---|
+| BaseNet | 76.08 | | 0.22 | 55.58 | |
+| + H-Swish | 77.48 | +1.40 | 0.22 | 58.18 | +2.60 |
+| + 5x5 | 78.85 | +1.37 | 0.23 | 59.09 | +0.91 |
+| + SE | 78.42 | −0.43 | 0.27 | 59.91 | +0.82 |
+| + 1x1 conv | 78.68 | +0.26 | 0.61 | 62.50 | +2.59 |
+| + dropout | 78.24 | −0.44 | 0.61 | 63.14 | +0.64 |
+
+H-Swish and 5x5 kernels reproduce clearly. The last three steps are within the noise of a
+single run on 3,925 validation images (~±0.7%p). Two of them likely depend on the dataset:
+the 1280-d head mainly adds capacity for 1,000 classes, and dropout does not help a model
+that is still underfitting (train loss is still falling at epoch 50).
+
+```bash
+docker run --rm --gpus all --shm-size=4g -u $(id -u):$(id -g) -e HOME=/tmp \
+    -v $PWD:/workspace -v ~/data/imagenette2:/data:ro \
+    pplcnet-torch python tools/ablation.py --root /data --epochs 50 --seeds 0
+```
+
 ## Development (Docker)
 
 ```bash
