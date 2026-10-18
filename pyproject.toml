@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pplcnet"
+version = "0.1.0"
+description = "PyTorch implementation of PP-LCNet (arXiv:2109.15099), ported from PaddleClas"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+dependencies = ["torch>=2.1", "numpy"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools]
+packages = ["pplcnet"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
