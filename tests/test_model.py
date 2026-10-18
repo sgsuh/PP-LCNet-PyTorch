@@ -155,3 +155,15 @@ def test_cuda_forward():
     with torch.no_grad():
         out = model(torch.randn(4, 3, 224, 224, device="cuda"))
     assert out.shape == (4, 1000) and torch.isfinite(out).all()
+
+
+def test_imagenette_dataset(tmp_path):
+    from PIL import Image
+    from pplcnet.data import IMAGENETTE_TO_IMAGENET, ImagenetteEval
+    for wnid in ("n01440764", "n03888257"):
+        (tmp_path / "val" / wnid).mkdir(parents=True)
+        Image.new("RGB", (320, 240), (128, 64, 32)).save(tmp_path / "val" / wnid / "a.JPEG")
+    ds = ImagenetteEval(str(tmp_path), "val")
+    assert [label for _, label in ds.samples] == [0, 701]
+    x, y = ds[1]
+    assert x.shape == (3, 224, 224) and y == IMAGENETTE_TO_IMAGENET["n03888257"]

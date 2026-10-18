@@ -110,6 +110,42 @@ docker run --rm -u $(id -u):$(id -g) -e HOME=/tmp -v $PWD:/workspace \
     --image /pc/docs/images/inference_deployment/whl_demo.jpg
 ```
 
+### Imagenette evaluation
+
+`tools/eval_imagenette.py` evaluates the official 1000-class weights on the
+[Imagenette](https://github.com/fastai/imagenette) `val` split (3,925 images taken from the
+ImageNet validation set; labels mapped to ImageNet-1k indices). `top-1(10)` restricts the
+prediction to the 10 Imagenette classes. With `--paddleclas`, the original PaddleClas model
+runs on the same input tensors.
+
+| Model | Top-1 | Top-5 | Top-1 (10 cls) | PaddleClas Top-1 | Agreement | Max logit diff |
+|---|---|---|---|---|---|---|
+| 0.25x | 60.99 | 83.13 | 95.77 | 60.99 | 100% | 4.0e-05 |
+| 0.25x SSLD | 57.86 | 81.94 | 95.34 | 57.86 | 100% | 9.8e-05 |
+| 0.35x | 68.20 | 88.79 | 97.48 | 68.20 | 100% | 5.5e-05 |
+| 0.5x | 73.89 | 91.95 | 98.42 | 73.89 | 100% | 3.5e-05 |
+| 0.5x SSLD | 72.61 | 91.01 | 98.11 | 72.61 | 100% | 5.9e-05 |
+| 0.75x | 79.92 | 95.21 | 99.41 | 79.92 | 100% | 3.0e-05 |
+| 1x | 83.82 | 97.12 | 99.62 | 83.82 | 100% | 2.5e-05 |
+| 1x SSLD | 82.55 | 96.15 | 99.29 | 82.55 | 100% | 3.9e-05 |
+| 1.5x | 88.69 | 98.68 | 99.77 | 88.69 | 100% | 6.2e-05 |
+| 2x | 93.43 | 99.75 | 99.97 | 93.43 | 100% | 2.8e-05 |
+| 2.5x | 94.52 | 99.64 | 99.95 | 94.52 | 100% | 2.8e-05 |
+| 2.5x SSLD | 88.89 | 98.60 | 99.77 | 88.89 | 100% | 4.6e-05 |
+
+These numbers cover only 10 classes and are not comparable to the paper's ImageNet top-1
+(e.g. 71.32% for 1x). SSLD checkpoints score lower than the plain ones on this subset even
+though they are better on full ImageNet.
+
+TF32 is disabled by default for this comparison. With `--allow-tf32`, cuDNN TF32 convolutions
+raise the logit difference to ~1e-1 and flip ~0.3% of predictions.
+
+```bash
+docker run --rm --gpus all --shm-size=2g -u $(id -u):$(id -g) -e HOME=/tmp \
+    -v $PWD:/workspace -v ~/data/imagenette2:/data:ro -v /path/to/weights:/w:ro \
+    pplcnet-torch python tools/eval_imagenette.py --root /data --weights-dir /w
+```
+
 ## Development (Docker)
 
 ```bash

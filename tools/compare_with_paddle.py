@@ -20,9 +20,7 @@ import torch
 from PIL import Image
 
 from pplcnet import PPLCNet
-
-MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
-STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+from pplcnet.data import preprocess
 
 # Imports in pp_lcnet.py that pull in the rest of ppcls; replaced with stand-ins.
 _IMPORT_STUBS = {
@@ -46,19 +44,6 @@ def load_paddle_module(paddleclas_root: str) -> types.ModuleType:
     module = types.ModuleType("paddle_pp_lcnet")
     exec(compile(source, path, "exec"), module.__dict__)
     return module
-
-
-def preprocess(image_path: str) -> np.ndarray:
-    """Resize short side to 256, center crop 224, normalize (PaddleClas eval)."""
-    img = Image.open(image_path).convert("RGB")
-    w, h = img.size
-    ratio = 256 / min(w, h)
-    img = img.resize((round(w * ratio), round(h * ratio)), Image.BILINEAR)
-    w, h = img.size
-    left, top = (w - 224) // 2, (h - 224) // 2
-    img = img.crop((left, top, left + 224, top + 224))
-    x = (np.asarray(img, dtype=np.float32) / 255.0 - MEAN) / STD
-    return x.transpose(2, 0, 1)[None].copy()
 
 
 def load_labels(path: str):
@@ -98,7 +83,8 @@ def main() -> None:
 
     inputs = {"random": np.random.default_rng(0).standard_normal((4, 3, 224, 224)).astype(np.float32)}
     if args.image:
-        inputs["image"] = preprocess(args.image)
+        with Image.open(args.image) as img:
+            inputs["image"] = preprocess(img)[None]
     labels = load_labels(args.labels or os.path.join(
         args.paddleclas, "ppcls/utils/imagenet1k_label_list.txt"))
 
