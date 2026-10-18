@@ -184,6 +184,71 @@ docker run --rm --gpus all --shm-size=4g -u $(id -u):$(id -g) -e HOME=/tmp \
     --out-dir runs/ablation_e100
 ```
 
+## Deployment: ONNX, ONNX Runtime, TensorRT
+
+```bash
+docker build --target deploy -t pplcnet-deploy .
+python tools/export_onnx.py --scale 1.0 --weights official --out PPLCNet_x1_0.onnx
+trtexec --onnx=PPLCNet_x1_0.onnx --fp16 --saveEngine=PPLCNet_x1_0.engine  # optional, standalone TensorRT
+```
+
+The exported graph contains only Conv, HardSwish, HardSigmoid, Relu, Mul, ReduceMean, Reshape
+and Gemm. BatchNorm is folded and inference dropout becomes a constant scale. The batch
+dimension is dynamic. Against PyTorch, ONNX Runtime differs by 6.9e-06 max logit for the
+official 1x weights, and Imagenette accuracy is identical (83.82%).
+
+### Latency and accuracy vs. other mobile models
+
+`tools/benchmark_deploy.py`: batch 1 median latency in ms (300 runs), plus TensorRT FP16
+throughput at batch 64. CPU: AMD Ryzen 9 7945HX, 10 threads (the paper used an Intel Xeon
+Gold 6148 with MKLDNN). GPU: RTX 4070 Laptop. Software: ONNX Runtime 1.31, TensorRT 10.16,
+PyTorch 2.14, run in WSL2 and Docker. torchvision models use `IMAGENET1K_V1` weights. ImageNet
+top-1 values are the published numbers (PaddleClas docs / torchvision docs). Imagenette top-1
+is measured here (1000-way, val split).
+
+| Model | ImageNet top-1 (reported) | Imagenette top-1 FP32 / TRT FP16 | CPU ORT | CPU PyTorch | GPU ORT-CUDA | GPU TRT FP32 | GPU TRT FP16 | TRT FP16 bs64 (img/s) |
+|---|---|---|---|---|---|---|---|---|
+| PP-LCNet-0.25x | 51.86 | 60.99 / 60.94 | 0.36 | 2.39 | 1.10 | 0.82 | 0.86 | 52,934 |
+| PP-LCNet-0.35x | 58.09 | 68.20 / 68.36 | 0.41 | 2.63 | 1.36 | 0.80 | 0.80 | 40,056 |
+| PP-LCNet-0.5x | 63.14 | 73.89 / 73.83 | 0.47 | 3.15 | 1.57 | 0.82 | 0.73 | 38,144 |
+| PP-LCNet-0.75x | 68.18 | 79.92 / 80.08 | 0.62 | 3.91 | 1.15 | 0.80 | 0.73 | 20,874 |
+| PP-LCNet-1x | 71.32 | 83.82 / 83.87 | 0.84 | 4.12 | 1.55 | 0.74 | 0.57 | 17,135 |
+| PP-LCNet-1.5x | 73.71 | 88.69 / 88.69 | 1.47 | 6.18 | 1.66 | 0.86 | 0.73 | 10,825 |
+| PP-LCNet-2x | 75.18 | 93.43 / 93.48 | 2.37 | 8.00 | 1.57 | 0.83 | 0.70 | 7,723 |
+| PP-LCNet-2.5x | 76.60 | 94.52 / 94.52 | 3.45 | 9.79 | 1.55 | 0.92 | 0.64 | 6,068 |
+| MobileNetV2-1.0 | 71.88 | 82.65 / 82.65 | 1.49 | 9.61 | 1.65 | 0.63 | 0.73 | 9,226 |
+| MobileNetV3-small | 67.67 | 81.12 / 81.10 | 1.01 | 4.37 | 2.07 | 1.23 | 1.01 | 27,082 |
+| MobileNetV3-large | 74.04 | 92.61 / 92.59 | 1.70 | 9.64 | 2.28 | 1.25 | 1.18 | 11,039 |
+| ShuffleNetV2-1.0 | 69.36 | 82.73 / 82.73 | 1.63 | 7.42 | 2.06 | 1.04 | 1.07 | 14,097 |
+| ShuffleNetV2-2.0 | 76.23 | 87.11 / 87.11 | 3.76 | 11.25 | 2.48 | 1.24 | 1.20 | 7,379 |
+
+Comparing models at similar ImageNet accuracy:
+
+- **CPU (ONNX Runtime): the paper's claim holds on this AMD CPU.** At each accuracy level,
+  PP-LCNet is faster than the alternative:
+
+  | Accuracy level | PP-LCNet | Alternative | PP-LCNet speedup |
+  |---|---|---|---|
+  | ~68% | 0.75x, 0.62 ms | MobileNetV3-small, 1.01 ms | 1.6x |
+  | ~71.5% | 1x, 0.84 ms | MobileNetV2, 1.49 ms | 1.8x |
+  | ~74% | 1.5x, 1.47 ms | MobileNetV3-large, 1.70 ms | 1.16x (0.3 points lower accuracy) |
+  | ~76.5% | 2.5x, 3.45 ms | ShuffleNetV2-2.0, 3.76 ms | 1.09x |
+
+- **GPU batch 1:** every model takes 0.6–1.3 ms whatever its size, because kernel-launch
+  overhead dominates. Latency here says little about the architecture.
+- **GPU throughput (TensorRT FP16, batch 64): the advantage mostly disappears.** PP-LCNet-1x
+  still beats MobileNetV2 by 1.9x. PP-LCNet-1.5x is on par with MobileNetV3-large.
+  MobileNetV3-small and ShuffleNetV2-2.0 are faster than PP-LCNet at matching accuracy.
+  This fits the paper's own caveat that its design targets Intel CPU latency.
+- **FP16 TensorRT is safe:** Imagenette top-1 changes by at most 0.16 points from FP32.
+- **ONNX Runtime vs. PyTorch eager on CPU:** ONNX Runtime is 3–7x faster for these small models.
+  This is why the eager-mode latencies in the ablation above showed no per-step differences.
+- **Imagenette ranks some models differently from ImageNet.** For example, MobileNetV3-large
+  scores 92.6 vs 88.7 for PP-LCNet-1.5x despite similar ImageNet accuracy. Imagenette has
+  only 10 classes, so these accuracy columns are for checking the runtimes, not for ranking models.
+- All numbers come from a single benchmark pass on a laptop. Expect roughly ±10% run-to-run
+  variation on the small batch-1 timings.
+
 ## Development (Docker)
 
 ```bash

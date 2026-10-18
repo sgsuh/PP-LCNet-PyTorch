@@ -1,0 +1,6 @@
+-r requirements-dev.txt
+onnx
+onnxscript
+onnxruntime-gpu==1.31.*
+# onnxruntime-gpu 1.31's TensorRT provider links against TensorRT 10 (libnvinfer.so.10).
+tensorrt-cu13>=10.13,<11
