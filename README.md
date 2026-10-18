@@ -89,6 +89,27 @@ python tools/convert_weights.py --scale 1.0 \
 `.pdparams` files are read with a restricted unpickler that only reconstructs numpy
 arrays; PaddlePaddle is not required.
 
+### Verified against PaddleClas
+
+`tools/compare_with_paddle.py` runs the original PaddleClas `pp_lcnet.py` and this port
+on the same inputs (CPU, PaddlePaddle 3.3.1, random batch + `whl_demo.jpg`):
+
+| Checkpoint | Max logit diff | Top-5 agree |
+|---|---|---|
+| `PPLCNet_x0_25_pretrained` | 2.9e-05 | yes |
+| `PPLCNet_x1_0_pretrained` | 1.0e-05 | yes |
+| `PPLCNet_x1_0_ssld_pretrained` | 1.6e-05 | yes |
+| `PPLCNet_x2_5_ssld_pretrained` | 1.7e-05 | yes |
+
+```bash
+# needs a PaddleClas checkout and an image with paddlepaddle installed
+docker run --rm -u $(id -u):$(id -g) -e HOME=/tmp -v $PWD:/workspace \
+    -v /path/to/PaddleClas:/pc:ro -v /path/to/weights:/w:ro <image-with-paddle> \
+    python tools/compare_with_paddle.py --paddleclas /pc --scale 1.0 \
+    --weights /w/PPLCNet_x1_0_pretrained.pdparams \
+    --image /pc/docs/images/inference_deployment/whl_demo.jpg
+```
+
 ## Development (Docker)
 
 ```bash

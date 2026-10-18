@@ -36,6 +36,8 @@ _ALLOWED_GLOBALS = {
     ("numpy.core.multiarray", "scalar"),
     ("numpy._core.multiarray", "scalar"),
     ("collections", "OrderedDict"),
+    # Protocol-2 pickles (e.g. the SSLD checkpoints) encode raw bytes this way.
+    ("_codecs", "encode"),
 }
 
 

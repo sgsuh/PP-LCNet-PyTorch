@@ -124,6 +124,16 @@ def test_paddle_checkpoint_roundtrip(tmp_path):
         assert torch.allclose(src(x), dst(x), atol=1e-5)
 
 
+def test_protocol2_checkpoint(tmp_path):
+    # Protocol 2 stores array bytes via _codecs.encode, as the SSLD checkpoints do.
+    model = PPLCNet(scale=0.25)
+    path = tmp_path / "proto2.pdparams"
+    with open(path, "wb") as f:
+        pickle.dump(_fake_pdparams(model), f, protocol=2)
+    state = paddle_to_torch_state_dict(load_pdparams(str(path)), model)
+    assert torch.equal(state["fc.weight"], model.fc.weight.detach())
+
+
 def test_unpickler_rejects_arbitrary_globals(tmp_path):
     path = tmp_path / "evil.pdparams"
     with open(path, "wb") as f:
